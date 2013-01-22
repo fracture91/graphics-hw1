@@ -1,5 +1,5 @@
 hw1: hw1.cpp vshader1.glsl fshader1.glsl Angel.h CheckError.h\
-		mat.h vec.h textfile.h textfile.cpp InitShader.cpp
+		mat.h vec.h textfile.h textfile.cpp InitShader.cpp GRSReader.cpp
 	cl /EHsc hw1.cpp glew32s.lib
 
 clean:

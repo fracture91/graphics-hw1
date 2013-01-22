@@ -6,7 +6,7 @@
 // Angel.h is homegrown include file that also includes glew and freeglut
 
 #include "Angel.h"
-#include "textfile.cpp"
+#include "GRSReader.cpp"
 
 // Number of points in drawing
 const int NumPoints = 15000;
@@ -21,8 +21,6 @@ void display( void );
 void keyboard( unsigned char key, int x, int y );
 
 typedef vec2 point2;
-
-using namespace std;
 
 // Array for polyline
 point2 points[NumPoints];
@@ -159,28 +157,9 @@ main( int argc, char **argv )
 	// add mouse handler
 	// add resize window functionality (should probably try to preserve aspect ratio)
 
-	string file = string(textFileRead("drawings/vinci.dat"));
-
-	// find the first line starting with an asterisk
-	// this indicates end of comment block
-	size_t firstStar = file.find("\n*");
-	if(firstStar != string::npos) {
-		// pull out comment and print it, just because
-		cout << "Comment:" << endl << file.substr(0, firstStar) << endl;
-		size_t dataStart = file.find("\n", firstStar + 2);
-		if(dataStart != string::npos) {
-			file = file.substr(dataStart + 1, string::npos);
-		} else {
-			file = string();
-		}
-	} else {
-		cout << "No comment" << endl;
-	}
-
-	if(file.size() == 0) {
-		cout << "No data" << endl;
-		exit(1);
-	}
+	GRSReader reader = GRSReader("drawings/vinci.dat");
+	GRSInfo info;
+	reader.read(info);
 
 	// enter the drawing loop
 	// frame rate can be controlled with 
