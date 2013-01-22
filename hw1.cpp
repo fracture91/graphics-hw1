@@ -159,41 +159,29 @@ main( int argc, char **argv )
 	// add mouse handler
 	// add resize window functionality (should probably try to preserve aspect ratio)
 
-	char* file = textFileRead("drawings/vinci.dat");
-	char* endOfFile = file + strlen(file);
+	string file = string(textFileRead("drawings/vinci.dat"));
 
 	// find the first line starting with an asterisk
 	// this indicates end of comment block
-	char* firstStar = strstr(file, "\n*");
-	if(firstStar != NULL) {
+	size_t firstStar = file.find("\n*");
+	if(firstStar != string::npos) {
 		// pull out comment and print it, just because
-		size_t commentLen = firstStar - file;
-		char* comment = (char*)malloc(sizeof(char) * (commentLen + 1));
-		strncpy(comment, file, commentLen);
-		comment[commentLen] = '\0';
-		cout << "Comment:" << endl << comment << endl;
-
-		char* dataStart = strstr(firstStar + 1, "\n");
-		if(dataStart == NULL) {
-			cout << "No data" << endl;
-			exit(1);
+		cout << "Comment:" << endl << file.substr(0, firstStar) << endl;
+		size_t dataStart = file.find("\n", firstStar + 2);
+		if(dataStart != string::npos) {
+			file = file.substr(dataStart + 1, string::npos);
+		} else {
+			file = string();
 		}
-		dataStart += 1; // point after newline
-		
-		// copy data into new memory
-		size_t dataLen = endOfFile - dataStart;
-		char* data = (char*)malloc(sizeof(char) * (dataLen + 1));
-		strncpy(data, dataStart, dataLen);
-		data[dataLen] = '\0';
-		free(file); // get rid of old file
-		file = data;
 	} else {
 		cout << "No comment" << endl;
 	}
 
-	cout << file << endl;
+	if(file.size() == 0) {
+		cout << "No data" << endl;
+		exit(1);
+	}
 
-	fflush(stdout);
 	// enter the drawing loop
 	// frame rate can be controlled with 
 	glutMainLoop();
