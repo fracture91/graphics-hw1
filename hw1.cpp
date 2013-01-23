@@ -129,9 +129,19 @@ keyboard( unsigned char key, int x, int y )
 	int
 main( int argc, char **argv )
 {
-	GRSReader reader = GRSReader("drawings/usa.dat");
-	GRSInfo info;
-	reader.read(info);
+	const char* filenames[] = {"drawings/birdhead.dat", "drawings/dino.dat",
+		"drawings/dragon.dat", "drawings/house.dat", "drawings/knight.dat",
+		"drawings/rex.dat", "drawings/scene.dat", "drawings/usa.dat",
+		"drawings/vinci.dat"};
+	unsigned numFiles = sizeof(filenames)/sizeof(filenames[0]);
+	GRSInfo infos[numFiles];
+	cout << "Reading files..." << endl;
+	for(unsigned i = 0; i < numFiles; i++)  {
+		GRSReader reader = GRSReader(filenames[i]);
+		reader.read(&infos[i]);
+	}
+	cout << "Done reading files." << endl;
+	print(infos[1]);
 
 	// init glut
 	glutInit( &argc, argv );
