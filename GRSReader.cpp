@@ -38,6 +38,22 @@ struct GRSInfo {
 	GRSLine* lines;
 };
 
+int getNumPoints(GRSInfo& info) {
+	int sum = 0;
+	for(unsigned i = 0; i < info.numLines; i++) {
+		sum += info.lines[i].numPoints;
+	}
+	return sum;
+}
+
+int getNumPoints(GRSInfo* infos, int numInfos) {
+	int sum = 0;
+	for(int i = 0; i < numInfos; i++) {
+		sum += getNumPoints(infos[i]);
+	}
+	return sum;
+}
+
 void print(GRSExtents& ex) {
 	cout << ex.left << ", " << ex.top << ", " << ex.right << ", "
 		<< ex.bottom << endl;

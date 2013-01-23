@@ -8,68 +8,37 @@
 #include "Angel.h"
 #include "GRSReader.cpp"
 
-// Number of points in drawing
-const int NumPoints = 15000;
-
 //----------------------------------------------------------------------------
 
 // remember to prototype
 void generateGeometry( void );
-void initGPUBuffers( void );
+void initGPUBuffers(vec2* points, int numPoints);
 void shaderSetup( void );
 void display( void );
 void keyboard( unsigned char key, int x, int y );
 
-typedef vec2 point2;
-
-// Array for polyline
-point2 points[NumPoints];
 GLuint program;
+GRSInfo* fileInfos; // describes all GRS files
+unsigned numFiles;
 
 
-void generateGeometry( void )
-{
-	// ***************** Important note ***************** //
-	// please refer to OpenGL documentation before coding
-	// many old functions have been depricated
-	// though they will probably still work on most machines others
-	// will require compatiability mode to be used
-
-	// A triangle in the plane z= 0
-	point2 vertices[3]={point2(-1.0,-1.0), point2(0.0,1.0), point2(1.0,-1.0)};
-	// An arbitrary initial point inside the triangle
-	points[0] = point2(0.25, 0.50);
-	// compute and store NumPoints-1 new points
-	for(int k = 1; k < NumPoints; k++) {
-		int j = rand() % 3; // pick a vertex at random
-		// Compute the point halfway between selected
-		// vertex and previous point
-		points[k] = (points[k-1]+vertices[j])/2.0;
-	}
-
-}
-
-
-void initGPUBuffers( void )
-{
+void initGPUBuffers(vec2* points, int numPoints) {
 	// Create a vertex array object
 	GLuint vao;
-	glGenVertexArrays( 1, &vao );
-	glBindVertexArray( vao );
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
 
 	// Create and initialize a buffer object
 	GLuint buffer;
-	glGenBuffers( 1, &buffer );
-	glBindBuffer( GL_ARRAY_BUFFER, buffer );
-	glBufferData( GL_ARRAY_BUFFER, sizeof(points), points, GL_STATIC_DRAW );
-
-
+	glGenBuffers(1, &buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, buffer);
+	GLsizeiptr size = sizeof(points)*numPoints;
+	glBufferData(GL_ARRAY_BUFFER, size, points, GL_STATIC_DRAW);
 }
 
 
 void shaderSetup( void )
 {
-	GLfloat blah = DivideByZeroTolerance;
 	// Load shaders and use the resulting shader program
 	program = InitShader( "vshader1.glsl", "fshader1.glsl" );
 	glUseProgram( program );
@@ -89,9 +58,7 @@ void shaderSetup( void )
 
 //----------------------------------------------------------------------------
 // this is where the drawing should happen
-	void
-display( void )
-{
+void display(void) {
 	// TIP 1: remember to enable depth buffering when drawing in 3d
 
 	// TIP 2: If you want to be sure your math functions are right, 
@@ -105,10 +72,20 @@ display( void )
 	// pass your own view matrix to the shader directly
 	// refer to the latest OpenGL documentation for implementation details
 
-	glClear( GL_COLOR_BUFFER_BIT );     // clear the window
-	glDrawArrays( GL_POINTS, 0, NumPoints );    // draw the points
-	glFlush(); // force output to graphics hardware
+	
 
+	glClear(GL_COLOR_BUFFER_BIT);     // clear the window
+
+	unsigned pointIndex = 0;
+	GRSInfo info = fileInfos[0];
+	// iterate through all lines and draw each one by drawing the
+	// appropriate subset of points on the GPU
+	for(unsigned i = 0; i < info.numLines; i++) {
+		unsigned len = info.lines[i].numPoints;
+		glDrawArrays(GL_LINE_STRIP, pointIndex, len);
+		pointIndex += len;
+	}
+	glFlush(); // force output to graphics hardware
 }
 
 //----------------------------------------------------------------------------
@@ -124,29 +101,48 @@ keyboard( unsigned char key, int x, int y )
 	}
 }
 
+// copy all points from infos into given array
+void getAllPoints(GRSInfo* infos, unsigned infosLen, vec2* points_out) {
+	unsigned outIndex = 0;
+	for(unsigned i = 0; i < infosLen; i++) {
+		GRSInfo info = infos[i];
+		for(unsigned j = 0; j < info.numLines; j++) {
+			GRSLine line = info.lines[j];
+			for(unsigned k = 0; k < line.numPoints; k++) {
+				points_out[outIndex] = line.points[k];
+				outIndex++;
+			}
+		}
+	}
+}
+
 //----------------------------------------------------------------------------
 // entry point
-	int
-main( int argc, char **argv )
-{
+int main(int argc, char **argv) {
+
 	const char* filenames[] = {"drawings/birdhead.dat", "drawings/dino.dat",
 		"drawings/dragon.dat", "drawings/house.dat", "drawings/knight.dat",
 		"drawings/rex.dat", "drawings/scene.dat", "drawings/usa.dat",
 		"drawings/vinci.dat"};
-	unsigned numFiles = sizeof(filenames)/sizeof(filenames[0]);
-	GRSInfo infos[numFiles];
+	numFiles = sizeof(filenames)/sizeof(filenames[0]);
+	fileInfos = new GRSInfo[numFiles];
+
 	cout << "Reading files..." << endl;
 	for(unsigned i = 0; i < numFiles; i++)  {
 		GRSReader reader = GRSReader(filenames[i]);
-		reader.read(&infos[i]);
+		reader.read(&fileInfos[i]);
 	}
 	cout << "Done reading files." << endl;
-	print(infos[1]);
+
+	// need to copy all points into a single array to be sent to GPU
+	int numPoints = getNumPoints(fileInfos, numFiles);
+	vec2* points = new vec2[numPoints];
+	getAllPoints(fileInfos, numFiles, points);
 
 	// init glut
-	glutInit( &argc, argv );
-	glutInitDisplayMode( GLUT_RGBA | GLUT_SINGLE );
-	glutInitWindowSize( 512, 512 );
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_RGBA | GLUT_SINGLE);
+	glutInitWindowSize(512, 512);
 
 	// If you are using freeglut, the next two lines will check if 
 	// the code is truly 3.2. Otherwise, comment them out
@@ -155,18 +151,17 @@ main( int argc, char **argv )
 	//glutInitContextProfile( GLUT_CORE_PROFILE );
 
 	// create GLUT window for drawing
-	glutCreateWindow( "Starting App" );
+	glutCreateWindow("PoliBook");
 
 	// init glew
 	glewInit();
 
-	generateGeometry( );
-	initGPUBuffers( );
-	shaderSetup( );
+	initGPUBuffers(points, numPoints);
+	shaderSetup();
 
 	// assign handlers
-	glutDisplayFunc( display );
-	glutKeyboardFunc( keyboard );
+	glutDisplayFunc(display);
+	glutKeyboardFunc(keyboard);
 	// should add menus
 	// add mouse handler
 	// add resize window functionality (should probably try to preserve aspect ratio)
