@@ -1,4 +1,5 @@
 #include <sstream>
+#include <stdexcept>
 #include "Angel.h"
 #include "textfile.cpp"
 
@@ -8,19 +9,33 @@ using std::endl;
 using std::getline;
 using std::stringstream;
 
+// thrown if the reader chokes and dies
+struct ReaderException : public std::runtime_error {
+	string reason;
+	public:
+		ReaderException(string _reason) : std::runtime_error(_reason) {
+			reason = _reason;
+		}
+		const char* what() const throw() {
+			return reason.c_str();
+		}
+		~ReaderException() throw() {
+		}
+};
+
 struct GRSExtents {
 	float left, top, right, bottom;
 };
 
 struct GRSLine {
 	unsigned numPoints;
-	vec2 points[];
+	vec2* points;
 };
 
 struct GRSInfo {
 	GRSExtents extents;
 	unsigned numLines;
-	GRSLine lines[];
+	GRSLine* lines;
 };
 
 class GRSReader {
@@ -54,7 +69,7 @@ class GRSReader {
 			}
 
 			if(content.size() == 0) {
-				throw "No data";
+				throw ReaderException("No GRS data");
 			}
 
 			stringstream stream(content, stringstream::in);
@@ -64,7 +79,7 @@ class GRSReader {
 					case 0:
 						parseExtents(); break;
 					case 1:
-						// number of lines
+						parseNumLines(); break;
 					default:
 						// check if line length or point
 						break;
@@ -76,7 +91,17 @@ class GRSReader {
 	private:
 		void parseExtents() {
 			GRSExtents* x = &info.extents;
-			sscanf(line.c_str(), "%f %f %f %f", &x->left, &x->top, &x->right,
-					&x->bottom);
+			int result = sscanf(line.c_str(), "%f %f %f %f",
+					&x->left, &x->top, &x->right, &x->bottom);
+			if(result != 4) {
+				throw ReaderException("Error parsing extents");
+			}
+		}
+		void parseNumLines() {
+			int result = sscanf(line.c_str(), "%d", &info.numLines);
+			if(result != 1) {
+				throw ReaderException("Error parsing number of lines");
+			}
+			info.lines = new GRSLine[info.numLines];
 		}
 };

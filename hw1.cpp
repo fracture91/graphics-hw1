@@ -129,6 +129,10 @@ keyboard( unsigned char key, int x, int y )
 	int
 main( int argc, char **argv )
 {
+	GRSReader reader = GRSReader("drawings/usa.dat");
+	GRSInfo info;
+	reader.read(info);
+
 	// init glut
 	glutInit( &argc, argv );
 	glutInitDisplayMode( GLUT_RGBA | GLUT_SINGLE );
@@ -156,10 +160,6 @@ main( int argc, char **argv )
 	// should add menus
 	// add mouse handler
 	// add resize window functionality (should probably try to preserve aspect ratio)
-
-	GRSReader reader = GRSReader("drawings/vinci.dat");
-	GRSInfo info;
-	reader.read(info);
 
 	// enter the drawing loop
 	// frame rate can be controlled with 
