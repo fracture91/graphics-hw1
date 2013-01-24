@@ -28,11 +28,6 @@ struct GRSExtents {
 	mat4 ortho;
 };
 
-struct GRSViewport {
-	GLint x, y;
-	GLsizei width, height;
-};
-
 struct GRSLine {
 	unsigned numPoints;
 	vec2* points;
@@ -41,11 +36,6 @@ struct GRSLine {
 struct GRSInfo {
 	const char* name;
 	GRSExtents extents;
-	// viewport is what will be used to pass to glViewport
-	// within describes the limits for the viewport (aspect ratio
-	// maintained within it)
-	GRSViewport viewport; // not filled in, can be used by consumer
-	GRSViewport within; // same
 	unsigned bufferIndex; // same - where data starts in GPU buffer
 	unsigned numLines;
 	GRSLine* lines;

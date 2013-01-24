@@ -7,6 +7,9 @@
 
 #include "Angel.h"
 #include "GRSReader.cpp"
+#include <vector>
+
+using std::vector;
 
 //----------------------------------------------------------------------------
 
@@ -17,10 +20,25 @@ void shaderSetup( void );
 void display( void );
 void keyboard( unsigned char key, int x, int y );
 
+struct Viewport {
+	GLint x, y;
+	GLsizei width, height;
+};
+
+// a canvas holds data to draw, and a location to draw it within
+struct Canvas {
+	// where this should be painted on the screen
+	// aspect ratio adjustments will likely make the drawing smaller than this
+	Viewport location;
+	GRSInfo* data;
+};
+
 GLuint program;
 GRSInfo* fileInfos; // describes all GRS files
 unsigned numFiles;
 mat4 ortho;
+// every canvas in here will be drawn, corrected to preserve aspect ratio
+vector<Canvas> canvases;
 
 
 void initGPUBuffers(vec2* points, int numPoints) {
@@ -55,20 +73,36 @@ void shaderSetup( void )
 
 }
 
-// assumes glViewport has been taken care of
-void drawInfo(GRSInfo* info) {
+// draw the data within the canvas' location, correcting for aspect ratio
+void drawCanvas(Canvas* canvas) {
 	// make the drawing scale to fit the viewport
-	ortho = info->extents.ortho;
+	ortho = canvas->data->extents.ortho;
 	GLuint projloc = glGetUniformLocation(program, "Proj");
 	glUniformMatrix4fv(projloc, 1, GL_TRUE, ortho);
 	// It took me about 5 hours of debugging to figure out that 3rd argument
 	// should be GL_TRUE instead of GL_FALSE.  True story.
 
+	GRSInfo* info = canvas->data;
+	GRSExtents ex = info->extents;
+	Viewport loc = canvas->location;
+	Viewport final = loc; // final is entire location by default
+
+	// adjust viewport to maintain aspect ratio within loc bounds
+	float targetRatio = (float)loc.width / (float)loc.height;
+	float sourceRatio = (ex.right - ex.left) / (ex.top - ex.bottom);
+	if(sourceRatio > targetRatio) {
+		final.height = loc.width / sourceRatio;
+	} else if (sourceRatio < targetRatio) {
+		final.width = loc.height * sourceRatio;
+	}
+
+	glViewport(final.x, final.y, final.width, final.height);
+
 	// iterate through all lines and draw each one by drawing the
 	// appropriate subset of points on the GPU
-	unsigned lastLineIndex = info->bufferIndex;
-	for(unsigned i = 0; i < info->numLines; i++) {
-		unsigned len = info->lines[i].numPoints;
+	unsigned lastLineIndex = canvas->data->bufferIndex;
+	for(unsigned i = 0; i < canvas->data->numLines; i++) {
+		unsigned len = canvas->data->lines[i].numPoints;
 		glDrawArrays(GL_LINE_STRIP, lastLineIndex, len);
 		lastLineIndex += len;
 	}
@@ -93,17 +127,11 @@ void display(void) {
 
 	glClear(GL_COLOR_BUFFER_BIT);     // clear the window
 
-	for(unsigned i = 0; i < numFiles; i++) {	
-		GRSInfo* info = &fileInfos[i];
-		GRSViewport* vp = &info->viewport;
-		glViewport(vp->x, vp->y, vp->width, vp->height);
-		drawInfo(info);
+	// draw every canvas
+	for(vector<Canvas>::iterator c = canvases.begin(); c != canvases.end(); ++c) {
+		drawCanvas(&*c); // *c - current iterator val, & to get pointer to canvas
 	}
-	GRSInfo* repeatedInfo = &fileInfos[numFiles - 1];
-	GRSViewport* repeatedVp = &repeatedInfo->viewport;
-	glViewport(repeatedVp->x + repeatedInfo->within.width, repeatedVp->y, repeatedVp->width,
-		repeatedVp->height);
-	drawInfo(repeatedInfo);
+	
 	glFlush(); // force output to graphics hardware
 }
 
@@ -124,35 +152,23 @@ void reshape(int screenWidth, int screenHeight) {
 	
 	const int toolbarHeight = 100;
 	int lastBoxEnd = 0;
+	int numToolbarItems = numFiles + 1;
 
-	// recalculate bounds and viewports for each file
-	for(unsigned i = 0; i < numFiles; i++) {
-		GRSInfo* info = &fileInfos[i];
+	// recalculate the position of each canvas
+	for(vector<Canvas>::iterator c = canvases.begin(); c != canvases.end(); ++c) {
+		Canvas* canvas = &*c;
+		Viewport* loc = &canvas->location;
+		int index = c - canvases.begin();
 		
-		// take up the box in the toolbar
-		GRSViewport* wi = &info->within;
-		wi->x = lastBoxEnd;
-		wi->y = screenHeight - toolbarHeight;
-		wi->width = (float)screenWidth / 10;
-		wi->height = toolbarHeight;
-		lastBoxEnd += wi->width;
-
-		// viewport is entire "within" bounds by default
-		GRSViewport* vp = &info->viewport;
-		vp->x = wi->x;
-		vp->y = wi->y;
-		vp->width = wi->width;
-		vp->height = wi->height;
-		
-		// adjust viewport to maintain aspect ratio in "within" bounds
-		GRSExtents* ex = &info->extents;
-		float targetRatio = (float)wi->width / (float)wi->height;
-		float sourceRatio = (ex->right - ex->left)
-			/ (ex->top - ex->bottom);
-		if(sourceRatio > targetRatio) {
-			vp->height = wi->width / sourceRatio;
-		} else if (sourceRatio < targetRatio) {
-			vp->width = wi->height * sourceRatio;
+		if(index < numToolbarItems) { //toolbar canvases
+			// split the toolbar so every item has equal width, same height
+			loc->x = lastBoxEnd;
+			loc->y = screenHeight - toolbarHeight;
+			loc->width = (float)screenWidth / numToolbarItems;
+			loc->height = toolbarHeight;
+			lastBoxEnd += loc->width;
+		} else {
+			// TODO: tiles, main area
 		}
 	}
 }
@@ -200,6 +216,18 @@ int main(int argc, char **argv) {
 	for(unsigned i = 0; i < numFiles; i++) {
 		fileInfos[i].bufferIndex = lastIndex;
 		lastIndex += getNumPoints(fileInfos[i]);
+	}
+
+	// set up toolbar canvases
+	for(unsigned i = 0; i < numFiles + 1; i++) {
+		Canvas c;
+		if(i == numFiles) {
+			c.data = &fileInfos[i - 1]; // last drawing appears twice
+		} else {
+			c.data = &fileInfos[i];
+		}
+		// location is handled by reshape
+		canvases.push_back(c);
 	}
 
 	// init glut
