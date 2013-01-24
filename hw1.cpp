@@ -76,7 +76,6 @@ void display(void) {
 	
 
 	glClear(GL_COLOR_BUFFER_BIT);     // clear the window
-	glViewport(0, 0, 640, 480);
 	
 	GRSInfo info = fileInfos[0];
 	
@@ -90,6 +89,8 @@ void display(void) {
 	// iterate through all lines and draw each one by drawing the
 	// appropriate subset of points on the GPU
 	unsigned pointIndex = 0;
+	GRSViewport* vp = &info.viewport;
+	glViewport(vp->x, vp->y, vp->width, vp->height);
 	for(unsigned i = 0; i < info.numLines; i++) {
 		unsigned len = info.lines[i].numPoints;
 		glDrawArrays(GL_LINE_STRIP, pointIndex, len);
@@ -111,8 +112,33 @@ keyboard( unsigned char key, int x, int y )
 	}
 }
 
-void reshape(int width, int height) {
+void reshape(int screenWidth, int screenHeight) {
+	GRSInfo* info = &fileInfos[0];
+	
+	// take up the whole screen
+	GRSViewport* wi = &info->within;
+	wi->x = 0;
+	wi->y = 0;
+	wi->width = screenWidth;
+	wi->height = screenHeight;
 
+	// viewport is entire "within" bounds by default
+	GRSViewport* vp = &info->viewport;
+	vp->x = wi->x;
+	vp->y = wi->y;
+	vp->width = wi->width;
+	vp->height = wi->height;
+	
+	// adjust viewport to maintain aspect ratio in "within" bounds
+	GRSExtents* ex = &info->extents;
+	float targetRatio = (float)wi->width / (float)wi->height;
+	float sourceRatio = (ex->right - ex->left)
+		/ (ex->top - ex->bottom);
+	if(sourceRatio > targetRatio) {
+		vp->height = wi->width / sourceRatio;
+	} else if (sourceRatio < targetRatio) {
+		vp->width = wi->height * sourceRatio;
+	}
 }
 
 // copy all points from infos into given array
