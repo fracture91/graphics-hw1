@@ -76,25 +76,30 @@ void display(void) {
 	
 
 	glClear(GL_COLOR_BUFFER_BIT);     // clear the window
-	
-	GRSInfo info = fileInfos[0];
-	
-	// make the drawing scale to fit the viewport
-	ortho = info.extents.ortho;
-	GLuint projloc = glGetUniformLocation(program, "Proj");
-	glUniformMatrix4fv(projloc, 1, GL_TRUE, ortho);
-	// It took me about 5 hours of debugging to figure out that 3rd argument
-	// should be GL_TRUE instead of GL_FALSE.  True story.
 
-	// iterate through all lines and draw each one by drawing the
-	// appropriate subset of points on the GPU
+	// all points of all files are on the GPU
+	// this index points to the start of the next file
 	unsigned pointIndex = 0;
-	GRSViewport* vp = &info.viewport;
-	glViewport(vp->x, vp->y, vp->width, vp->height);
-	for(unsigned i = 0; i < info.numLines; i++) {
-		unsigned len = info.lines[i].numPoints;
-		glDrawArrays(GL_LINE_STRIP, pointIndex, len);
-		pointIndex += len;
+
+	for(unsigned i = 0; i < numFiles; i++) {	
+		GRSInfo info = fileInfos[i];
+		
+		// make the drawing scale to fit the viewport
+		ortho = info.extents.ortho;
+		GLuint projloc = glGetUniformLocation(program, "Proj");
+		glUniformMatrix4fv(projloc, 1, GL_TRUE, ortho);
+		// It took me about 5 hours of debugging to figure out that 3rd argument
+		// should be GL_TRUE instead of GL_FALSE.  True story.
+
+		// iterate through all lines and draw each one by drawing the
+		// appropriate subset of points on the GPU
+		GRSViewport* vp = &info.viewport;
+		glViewport(vp->x, vp->y, vp->width, vp->height);
+		for(unsigned i = 0; i < info.numLines; i++) {
+			unsigned len = info.lines[i].numPoints;
+			glDrawArrays(GL_LINE_STRIP, pointIndex, len);
+			pointIndex += len;
+		}
 	}
 	glFlush(); // force output to graphics hardware
 }
@@ -113,31 +118,39 @@ keyboard( unsigned char key, int x, int y )
 }
 
 void reshape(int screenWidth, int screenHeight) {
-	GRSInfo* info = &fileInfos[0];
 	
-	// take up the whole screen
-	GRSViewport* wi = &info->within;
-	wi->x = 0;
-	wi->y = 0;
-	wi->width = screenWidth;
-	wi->height = screenHeight;
+	const int toolbarHeight = 100;
+	int lastBoxEnd = 0;
 
-	// viewport is entire "within" bounds by default
-	GRSViewport* vp = &info->viewport;
-	vp->x = wi->x;
-	vp->y = wi->y;
-	vp->width = wi->width;
-	vp->height = wi->height;
-	
-	// adjust viewport to maintain aspect ratio in "within" bounds
-	GRSExtents* ex = &info->extents;
-	float targetRatio = (float)wi->width / (float)wi->height;
-	float sourceRatio = (ex->right - ex->left)
-		/ (ex->top - ex->bottom);
-	if(sourceRatio > targetRatio) {
-		vp->height = wi->width / sourceRatio;
-	} else if (sourceRatio < targetRatio) {
-		vp->width = wi->height * sourceRatio;
+	// recalculate bounds and viewports for each file
+	for(unsigned i = 0; i < numFiles; i++) {
+		GRSInfo* info = &fileInfos[i];
+		
+		// take up the box in the toolbar
+		GRSViewport* wi = &info->within;
+		wi->x = lastBoxEnd;
+		wi->y = screenHeight - toolbarHeight;
+		wi->width = (float)screenWidth / 10;
+		wi->height = toolbarHeight;
+		lastBoxEnd += wi->width;
+
+		// viewport is entire "within" bounds by default
+		GRSViewport* vp = &info->viewport;
+		vp->x = wi->x;
+		vp->y = wi->y;
+		vp->width = wi->width;
+		vp->height = wi->height;
+		
+		// adjust viewport to maintain aspect ratio in "within" bounds
+		GRSExtents* ex = &info->extents;
+		float targetRatio = (float)wi->width / (float)wi->height;
+		float sourceRatio = (ex->right - ex->left)
+			/ (ex->top - ex->bottom);
+		if(sourceRatio > targetRatio) {
+			vp->height = wi->width / sourceRatio;
+		} else if (sourceRatio < targetRatio) {
+			vp->width = wi->height * sourceRatio;
+		}
 	}
 }
 

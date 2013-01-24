@@ -39,6 +39,7 @@ struct GRSLine {
 };
 
 struct GRSInfo {
+	const char* name;
 	GRSExtents extents;
 	// viewport is what will be used to pass to glViewport
 	// within describes the limits for the viewport (aspect ratio
@@ -87,6 +88,7 @@ void print(GRSInfo& info) {
 
 class GRSReader {
 	private:
+		const char* filename;
 		string content;
 		string line;
 		GRSInfo* info;
@@ -94,13 +96,15 @@ class GRSReader {
 		unsigned pointsIndex;
 
 	public:
-		GRSReader(const char* filename) {
-			content = string(textFileRead(filename));
+		GRSReader(const char* _filename) {
+			content = string(textFileRead(_filename));
+			filename = _filename;
 		}
 
 		// fill in the given GRSInfo object with the information in the file
 		void read(GRSInfo* _info) {
 			info = _info;
+			info->name = filename;
 			// find the first line starting with an asterisk
 			// this indicates end of comment block
 			size_t firstStar = content.find("\n*");
