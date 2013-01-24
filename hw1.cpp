@@ -20,6 +20,7 @@ void keyboard( unsigned char key, int x, int y );
 GLuint program;
 GRSInfo* fileInfos; // describes all GRS files
 unsigned numFiles;
+mat4 ortho;
 
 
 void initGPUBuffers(vec2* points, int numPoints) {
@@ -75,11 +76,20 @@ void display(void) {
 	
 
 	glClear(GL_COLOR_BUFFER_BIT);     // clear the window
-
-	unsigned pointIndex = 0;
+	glViewport(0, 0, 640, 480);
+	
 	GRSInfo info = fileInfos[0];
+	
+	// make the drawing scale to fit the viewport
+	ortho = info.extents.ortho;
+	GLuint projloc = glGetUniformLocation(program, "Proj");
+	glUniformMatrix4fv(projloc, 1, GL_TRUE, ortho);
+	// It took me about 5 hours of debugging to figure out that 3rd argument
+	// should be GL_TRUE instead of GL_FALSE.  True story.
+
 	// iterate through all lines and draw each one by drawing the
 	// appropriate subset of points on the GPU
+	unsigned pointIndex = 0;
 	for(unsigned i = 0; i < info.numLines; i++) {
 		unsigned len = info.lines[i].numPoints;
 		glDrawArrays(GL_LINE_STRIP, pointIndex, len);
@@ -99,6 +109,10 @@ keyboard( unsigned char key, int x, int y )
 			exit( EXIT_SUCCESS );
 			break;
 	}
+}
+
+void reshape(int width, int height) {
+
 }
 
 // copy all points from infos into given array
@@ -142,7 +156,7 @@ int main(int argc, char **argv) {
 	// init glut
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_SINGLE);
-	glutInitWindowSize(512, 512);
+	glutInitWindowSize(640, 480);
 
 	// If you are using freeglut, the next two lines will check if 
 	// the code is truly 3.2. Otherwise, comment them out
@@ -162,6 +176,7 @@ int main(int argc, char **argv) {
 	// assign handlers
 	glutDisplayFunc(display);
 	glutKeyboardFunc(keyboard);
+	glutReshapeFunc(reshape);
 	// should add menus
 	// add mouse handler
 	// add resize window functionality (should probably try to preserve aspect ratio)

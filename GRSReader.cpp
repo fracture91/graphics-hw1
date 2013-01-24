@@ -25,6 +25,7 @@ struct ReaderException : public std::runtime_error {
 
 struct GRSExtents {
 	float left, top, right, bottom;
+	mat4 ortho;
 };
 
 struct GRSLine {
@@ -141,6 +142,7 @@ class GRSReader {
 			if(result != 4) {
 				throw ReaderException("Error parsing extents");
 			}
+			x->ortho = Ortho2D(x->left, x->right, x->bottom, x->top);
 		}
 		void parseNumLines() {
 			int result = sscanf(line.c_str(), "%d", &info->numLines);
