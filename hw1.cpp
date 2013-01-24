@@ -33,7 +33,7 @@ void initGPUBuffers(vec2* points, int numPoints) {
 	GLuint buffer;
 	glGenBuffers(1, &buffer);
 	glBindBuffer(GL_ARRAY_BUFFER, buffer);
-	GLsizeiptr size = sizeof(points)*numPoints;
+	GLsizeiptr size = sizeof(points[0])*numPoints;
 	glBufferData(GL_ARRAY_BUFFER, size, points, GL_STATIC_DRAW);
 }
 
