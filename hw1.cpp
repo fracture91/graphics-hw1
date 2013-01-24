@@ -55,6 +55,24 @@ void shaderSetup( void )
 
 }
 
+// assumes glViewport has been taken care of
+void drawInfo(GRSInfo* info) {
+	// make the drawing scale to fit the viewport
+	ortho = info->extents.ortho;
+	GLuint projloc = glGetUniformLocation(program, "Proj");
+	glUniformMatrix4fv(projloc, 1, GL_TRUE, ortho);
+	// It took me about 5 hours of debugging to figure out that 3rd argument
+	// should be GL_TRUE instead of GL_FALSE.  True story.
+
+	// iterate through all lines and draw each one by drawing the
+	// appropriate subset of points on the GPU
+	unsigned lastLineIndex = info->bufferIndex;
+	for(unsigned i = 0; i < info->numLines; i++) {
+		unsigned len = info->lines[i].numPoints;
+		glDrawArrays(GL_LINE_STRIP, lastLineIndex, len);
+		lastLineIndex += len;
+	}
+}
 
 
 //----------------------------------------------------------------------------
@@ -73,34 +91,19 @@ void display(void) {
 	// pass your own view matrix to the shader directly
 	// refer to the latest OpenGL documentation for implementation details
 
-	
-
 	glClear(GL_COLOR_BUFFER_BIT);     // clear the window
 
-	// all points of all files are on the GPU
-	// this index points to the start of the next file
-	unsigned pointIndex = 0;
-
 	for(unsigned i = 0; i < numFiles; i++) {	
-		GRSInfo info = fileInfos[i];
-		
-		// make the drawing scale to fit the viewport
-		ortho = info.extents.ortho;
-		GLuint projloc = glGetUniformLocation(program, "Proj");
-		glUniformMatrix4fv(projloc, 1, GL_TRUE, ortho);
-		// It took me about 5 hours of debugging to figure out that 3rd argument
-		// should be GL_TRUE instead of GL_FALSE.  True story.
-
-		// iterate through all lines and draw each one by drawing the
-		// appropriate subset of points on the GPU
-		GRSViewport* vp = &info.viewport;
+		GRSInfo* info = &fileInfos[i];
+		GRSViewport* vp = &info->viewport;
 		glViewport(vp->x, vp->y, vp->width, vp->height);
-		for(unsigned i = 0; i < info.numLines; i++) {
-			unsigned len = info.lines[i].numPoints;
-			glDrawArrays(GL_LINE_STRIP, pointIndex, len);
-			pointIndex += len;
-		}
+		drawInfo(info);
 	}
+	GRSInfo* repeatedInfo = &fileInfos[numFiles - 1];
+	GRSViewport* repeatedVp = &repeatedInfo->viewport;
+	glViewport(repeatedVp->x + repeatedInfo->within.width, repeatedVp->y, repeatedVp->width,
+		repeatedVp->height);
+	drawInfo(repeatedInfo);
 	glFlush(); // force output to graphics hardware
 }
 
@@ -191,6 +194,13 @@ int main(int argc, char **argv) {
 	int numPoints = getNumPoints(fileInfos, numFiles);
 	vec2* points = new vec2[numPoints];
 	getAllPoints(fileInfos, numFiles, points);
+
+	// set up bufferIndex
+	unsigned lastIndex = 0;
+	for(unsigned i = 0; i < numFiles; i++) {
+		fileInfos[i].bufferIndex = lastIndex;
+		lastIndex += getNumPoints(fileInfos[i]);
+	}
 
 	// init glut
 	glutInit(&argc, argv);
