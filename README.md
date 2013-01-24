@@ -1,4 +1,8 @@
-Copy/paste from hw0 for now
+PoliBook program for displaying and drawing GRS files.
+
+The program is linked against whatever files are present on the machine.
+The Zoo Lab machines contain the needed library files, so they're not
+included here.
 
 To compile and run on Linux:
 
