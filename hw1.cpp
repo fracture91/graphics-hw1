@@ -51,6 +51,13 @@ void bufferPoints(vec2* points, int numPoints) {
 	glBufferData(GL_ARRAY_BUFFER, size, points, GL_STATIC_DRAW);
 }
 
+// copy all lines from given info to lines_out
+void copyAllLines(GRSInfo* info, GRSLine* lines_out) {
+	for(unsigned i = 0; i < info->numLines; i++) {
+		lines_out[i] = info->lines[i];
+	}
+}
+
 // copy all points from given line into points_out
 void copyAllPoints(GRSLine* line, vec2* points_out) {
 	for(unsigned i = 0; i < line->numPoints; i++) {
@@ -293,6 +300,14 @@ void changeState(ProgramState state) {
 
 }
 
+bool isBPressed = false;
+
+void keyboardUp(unsigned char key, int x, int y) {
+	if(key == 98) {
+		isBPressed = false;
+	}
+}
+
 // keyboard handler
 void keyboard(unsigned char key, int x, int y) {
 	switch (key) {
@@ -308,6 +323,9 @@ void keyboard(unsigned char key, int x, int y) {
 		case 101: // E
 			changeState(E);
 			break;
+		case 98:
+			isBPressed = true;
+			break;
 	}
 	display(); // doesn't display automatically, need to call this
 }
@@ -321,6 +339,19 @@ bool coordWithinViewport(int x, int y, Viewport* loc) {
 }
 
 int g_screenHeight = 0;
+
+// add a line to the given info
+void addLine(GRSInfo* info) {
+	// copy all lines
+	// (no need to copy points within, since pointers point to same place)
+	GRSLine* newLines = new GRSLine[info->numLines + 1];
+	copyAllLines(info, newLines);
+	delete info->lines;
+	newLines[info->numLines].numPoints = 0;
+	newLines[info->numLines].points = new vec2[0];
+	info->numLines++;
+	info->lines = newLines;
+}
 
 // add a point to the given line
 void addPoint(GRSLine* line, vec2 point) {
@@ -355,9 +386,13 @@ void mouse(int button, int state, int x, int y) {
 	if(progState == E) {
 		// check if user clicked in viewport
 		if(coordWithinViewport(x, y, &getMainCanvas()->adjusted)) {
+			if(isBPressed) {
+				// start a new line
+				addLine(&drawingInfo);
+			}
+			// add point to line
 			// TODO: convert screen coords to world coords
 			// by default, world coords are same as screen coords
-			// add point to line
 			addPoint(&drawingInfo.lines[drawingInfo.numLines - 1], vec2(x, y));
 			bufferAllPoints();
 		}
@@ -488,6 +523,7 @@ int main(int argc, char **argv) {
 	// assign handlers
 	glutDisplayFunc(display);
 	glutKeyboardFunc(keyboard);
+	glutKeyboardUpFunc(keyboardUp);
 	glutReshapeFunc(reshape);
 	glutMouseFunc(mouse);
 	// should add menus
