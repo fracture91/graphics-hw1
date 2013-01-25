@@ -233,9 +233,9 @@ void clearDrawingInfo() {
 	drawingInfo.lines[0].points = new vec2[5];
 	vec2* points = drawingInfo.lines[0].points;
 	points[0] = vec2(ex->left + 1, ex->bottom + 1);
-	points[1] = vec2(ex->left + 1, ex->top);
-	points[2] = vec2(ex->right, ex->top);
-	points[3] = vec2(ex->right, ex->bottom + 1);
+	points[1] = vec2(ex->left + 1, ex->top - 1);
+	points[2] = vec2(ex->right - 1, ex->top - 1);
+	points[3] = vec2(ex->right - 1, ex->bottom + 1);
 	points[4] = points[0];
 
 	bufferAllPoints();
