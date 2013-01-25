@@ -41,6 +41,7 @@ mat4 ortho;
 // every canvas in here will be drawn, corrected to preserve aspect ratio
 vector<Canvas> canvases;
 Canvas* mainCanvas; // the main large canvas, added to canvases later
+int numToolbarItems;
 
 
 void initGPUBuffers(vec2* points, int numPoints) {
@@ -151,7 +152,7 @@ void displayRandomFile() {
 }
 
 // keyboard handler
-void keyboard( unsigned char key, int x, int y ) {
+void keyboard(unsigned char key, int x, int y) {
 	switch ( key ) {
 		case 27: // ESC
 			exit( EXIT_SUCCESS );
@@ -163,11 +164,39 @@ void keyboard( unsigned char key, int x, int y ) {
 	display(); // doesn't display automatically, need to call this
 }
 
+bool coordWithinViewport(int x, int y, Viewport* loc) {
+	if(  x > loc->x && x < (loc->x + loc->width)
+	  && y > loc->y && y < (loc->y + loc->height)) {
+		return true;
+	}
+	return false;
+}
+
+int g_screenHeight = 0;
+
+void mouse(int button, int state, int x, int y) {
+	y = g_screenHeight - y; // unfuck y coordinate
+
+	// see if user clicked on a toolbar item
+	for(vector<Canvas>::iterator c = canvases.begin(); c != canvases.end(); ++c) {
+		Canvas* canvas = &*c;
+		Viewport* loc = &canvas->location;
+		int index = c - canvases.begin();
+		if(index < numToolbarItems) {
+			if(coordWithinViewport(x, y, loc)) {
+				mainCanvas->data = canvas->data;
+				break;
+			}
+		}
+	}
+	display();
+}
+
 void reshape(int screenWidth, int screenHeight) {
 	
 	const int toolbarHeight = 100;
 	int lastBoxEnd = 0;
-	int numToolbarItems = numFiles + 1;
+	g_screenHeight = screenHeight;
 
 	// recalculate the position of each canvas
 	for(vector<Canvas>::iterator c = canvases.begin(); c != canvases.end(); ++c) {
@@ -216,6 +245,7 @@ int main(int argc, char **argv) {
 		"drawings/rex.dat", "drawings/scene.dat", "drawings/usa.dat",
 		"drawings/vinci.dat"};
 	numFiles = sizeof(filenames)/sizeof(filenames[0]);
+	numToolbarItems = numFiles + 1;
 	fileInfos = new GRSInfo[numFiles];
 
 	cout << "Reading files..." << endl;
@@ -280,6 +310,7 @@ int main(int argc, char **argv) {
 	glutDisplayFunc(display);
 	glutKeyboardFunc(keyboard);
 	glutReshapeFunc(reshape);
+	glutMouseFunc(mouse);
 	// should add menus
 	// add mouse handler
 	// add resize window functionality (should probably try to preserve aspect ratio)
