@@ -40,7 +40,6 @@ unsigned numFiles;
 mat4 ortho;
 // every canvas in here will be drawn, corrected to preserve aspect ratio
 vector<Canvas> canvases;
-Canvas* mainCanvas; // the main large canvas, added to canvases later
 int numToolbarItems;
 
 
@@ -145,20 +144,79 @@ void display(void) {
 
 //----------------------------------------------------------------------------
 
-void displayRandomFile() {
-	// set mainCanvas data to a random file
+void displayRandomFile(Canvas* canvas) {
+	// set canvas data to a random file
 	int randomIndex = rand() % numFiles;
-	mainCanvas->data = &fileInfos[randomIndex];
+	canvas->data = &fileInfos[randomIndex];
+}
+
+const int TILE_ROWS = 6, TILE_COLUMNS = 6;
+
+void clearRandomTiles() {
+	for(vector<Canvas>::iterator c = canvases.begin(); c != canvases.end(); ++c) {
+		Canvas* canvas = &*c;
+		int index = c - canvases.begin();
+		if(index > numToolbarItems) { // tile canvases are after toolbar and main canvas
+			canvas->data = NULL;
+		}
+	}
+}
+
+// show 6x6 random tiles in the main area
+void displayRandomTiles() {
+	for(vector<Canvas>::iterator c = canvases.begin(); c != canvases.end(); ++c) {
+		Canvas* canvas = &*c;
+		int index = c - canvases.begin();
+		if(index > numToolbarItems) { // tile canvases are after toolbar and main canvas
+			displayRandomFile(canvas);
+		}
+	}
+}
+
+Canvas* getMainCanvas() {
+	return &canvases.at(numToolbarItems);
+}
+
+enum ProgramState {P, T};
+ProgramState progState = P;
+
+void changeState(ProgramState state) {
+	ProgramState origState = progState;
+	progState = state;
+
+	switch (state) {
+		case P:
+			displayRandomFile(getMainCanvas());
+			break;
+		case T:
+			displayRandomTiles();
+			break;
+	}
+
+	// cleanup for states that need it
+	if(origState != progState) {
+		switch(origState) {
+			case P:
+				getMainCanvas()->data = NULL;
+				break;
+			case T:
+				clearRandomTiles();
+				break;
+		}
+	}
 }
 
 // keyboard handler
 void keyboard(unsigned char key, int x, int y) {
-	switch ( key ) {
+	switch (key) {
 		case 27: // ESC
 			exit( EXIT_SUCCESS );
 			break;
 		case 112: // P
-			displayRandomFile();
+			changeState(P);
+			break;
+		case 116: // T
+			changeState(T);
 			break;
 	}
 	display(); // doesn't display automatically, need to call this
@@ -184,7 +242,8 @@ void mouse(int button, int state, int x, int y) {
 		int index = c - canvases.begin();
 		if(index < numToolbarItems) {
 			if(coordWithinViewport(x, y, loc)) {
-				mainCanvas->data = canvas->data;
+				changeState(P);
+				getMainCanvas()->data = canvas->data;
 				break;
 			}
 		}
@@ -210,13 +269,19 @@ void reshape(int screenWidth, int screenHeight) {
 			loc->width = (float)screenWidth / numToolbarItems;
 			loc->height = toolbarHeight;
 			lastBoxEnd += loc->width;
-		} else if(canvas == mainCanvas) { // main canvas right after toolbar items
+		} else if(canvas == getMainCanvas()) { // main canvas right after toolbar items
 			loc->x = loc->y = 0;
 			loc->width = screenWidth;
 			int height = screenHeight - toolbarHeight;
 			loc->height = height < 0 ? 0 : height;
-		} else {
-			// TODO: tile
+		} else { // random tiles
+			loc->width = screenWidth / TILE_COLUMNS;
+			loc->height = (screenHeight - toolbarHeight) / TILE_ROWS;
+			index -= numToolbarItems + 1;
+			int row = index / TILE_COLUMNS;
+			int column = index % TILE_COLUMNS;
+			loc->x = column * loc->width;
+			loc->y = row * loc->height;
 		}
 	}
 }
@@ -278,13 +343,24 @@ int main(int argc, char **argv) {
 		// location is handled by reshape
 		canvases.push_back(c);
 	}
+
+	// add the main canvas
 	Canvas c;
-	canvases.push_back(c); // push empty canvas
-	mainCanvas = &canvases.back(); // mainCanvas points to the new one
-	mainCanvas->data = NULL; // make sure display function knows there's no data
+	c.data = NULL;
+	canvases.push_back(c);
 
 	srand(time(NULL));
-	displayRandomFile();
+	displayRandomFile(getMainCanvas());
+
+	// set up our random tile canvases
+	for(int x = 0; x < TILE_COLUMNS; x++) {
+		for(int y = 0; y < TILE_ROWS; y++) {
+			Canvas c;
+			canvases.push_back(c);
+			// reshape handles the sizing and position
+		}
+	}
+	clearRandomTiles();
 
 	// init glut
 	glutInit(&argc, argv);
