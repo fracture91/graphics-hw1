@@ -41,9 +41,42 @@ mat4 ortho;
 // every canvas in here will be drawn, corrected to preserve aspect ratio
 vector<Canvas> canvases;
 int numToolbarItems;
+GRSInfo drawingInfo; // holds info for the free draw mode
 
 
-void initGPUBuffers(vec2* points, int numPoints) {
+void bufferPoints(vec2* points, int numPoints) {
+	GLsizeiptr size = sizeof(points[0])*numPoints;
+	glBufferData(GL_ARRAY_BUFFER, size, points, GL_STATIC_DRAW);
+}
+
+// copy all points from infos into given array
+void copyAllPoints(GRSInfo* infos, unsigned infosLen, vec2* points_out) {
+	unsigned outIndex = 0;
+	for(unsigned i = 0; i < infosLen; i++) {
+		GRSInfo info = infos[i];
+		for(unsigned j = 0; j < info.numLines; j++) {
+			GRSLine line = info.lines[j];
+			for(unsigned k = 0; k < line.numPoints; k++) {
+				points_out[outIndex] = line.points[k];
+				outIndex++;
+			}
+		}
+	}
+}
+
+void bufferAllPoints() {
+	// need to copy all points into a single array to be sent to GPU
+	int fileNumPoints = getNumPoints(fileInfos, numFiles);
+	int totalNumPoints = fileNumPoints + getNumPoints(&drawingInfo, 1);
+	vec2* points = new vec2[totalNumPoints];
+	copyAllPoints(fileInfos, numFiles, points);
+	copyAllPoints(&drawingInfo, 1, points + fileNumPoints);
+
+	bufferPoints(points, totalNumPoints);
+	delete points; // points are on GPU, delete the copy
+}
+
+void initGPUBuffers() {
 	// Create a vertex array object
 	GLuint vao;
 	glGenVertexArrays(1, &vao);
@@ -53,8 +86,6 @@ void initGPUBuffers(vec2* points, int numPoints) {
 	GLuint buffer;
 	glGenBuffers(1, &buffer);
 	glBindBuffer(GL_ARRAY_BUFFER, buffer);
-	GLsizeiptr size = sizeof(points[0])*numPoints;
-	glBufferData(GL_ARRAY_BUFFER, size, points, GL_STATIC_DRAW);
 }
 
 
@@ -177,21 +208,45 @@ Canvas* getMainCanvas() {
 	return &canvases.at(numToolbarItems);
 }
 
-enum ProgramState {P, T};
+void clearDrawingInfo() {
+	GRSExtents* ex = &drawingInfo.extents;
+	Viewport vp = getMainCanvas()->location;
+
+	// make our drawing extents the same as the main canvas size
+	ex->left = vp.x;
+	ex->right = vp.x + vp.width;
+	ex->bottom = vp.y;
+	ex->top = vp.y + vp.height;
+	ex->ortho = Ortho2D(ex->left, ex->right, ex->bottom, ex->top);
+
+	// free memory for any existing lines and their points
+	for(unsigned i = 0; i < drawingInfo.numLines; i++) {
+		delete drawingInfo.lines[i].points;
+	}
+	delete drawingInfo.lines;
+	
+	// draw default points to indicate drawing bounds
+	// (since aspect ratio preservation may make it smaller than canvas)
+	drawingInfo.numLines = 1;
+	drawingInfo.lines = new GRSLine[1];
+	drawingInfo.lines[0].numPoints = 5;
+	drawingInfo.lines[0].points = new vec2[5];
+	vec2* points = drawingInfo.lines[0].points;
+	points[0] = vec2(ex->left + 1, ex->bottom + 1);
+	points[1] = vec2(ex->left + 1, ex->top);
+	points[2] = vec2(ex->right, ex->top);
+	points[3] = vec2(ex->right, ex->bottom + 1);
+	points[4] = points[0];
+
+	bufferAllPoints();
+}
+
+enum ProgramState {P, T, E};
 ProgramState progState = P;
 
 void changeState(ProgramState state) {
 	ProgramState origState = progState;
 	progState = state;
-
-	switch (state) {
-		case P:
-			displayRandomFile(getMainCanvas());
-			break;
-		case T:
-			displayRandomTiles();
-			break;
-	}
 
 	// cleanup for states that need it
 	if(origState != progState) {
@@ -202,8 +257,25 @@ void changeState(ProgramState state) {
 			case T:
 				clearRandomTiles();
 				break;
+			case E:
+				getMainCanvas()->data = NULL;
+				break;
 		}
 	}
+
+	switch (state) {
+		case P:
+			displayRandomFile(getMainCanvas());
+			break;
+		case T:
+			displayRandomTiles();
+			break;
+		case E:
+			clearDrawingInfo();
+			getMainCanvas()->data = &drawingInfo;
+			break;
+	}
+
 }
 
 // keyboard handler
@@ -217,6 +289,9 @@ void keyboard(unsigned char key, int x, int y) {
 			break;
 		case 116: // T
 			changeState(T);
+			break;
+		case 101: // E
+			changeState(E);
 			break;
 	}
 	display(); // doesn't display automatically, need to call this
@@ -286,20 +361,7 @@ void reshape(int screenWidth, int screenHeight) {
 	}
 }
 
-// copy all points from infos into given array
-void getAllPoints(GRSInfo* infos, unsigned infosLen, vec2* points_out) {
-	unsigned outIndex = 0;
-	for(unsigned i = 0; i < infosLen; i++) {
-		GRSInfo info = infos[i];
-		for(unsigned j = 0; j < info.numLines; j++) {
-			GRSLine line = info.lines[j];
-			for(unsigned k = 0; k < line.numPoints; k++) {
-				points_out[outIndex] = line.points[k];
-				outIndex++;
-			}
-		}
-	}
-}
+
 
 //----------------------------------------------------------------------------
 // entry point
@@ -319,18 +381,6 @@ int main(int argc, char **argv) {
 		reader.read(&fileInfos[i]);
 	}
 	cout << "Done reading files." << endl;
-
-	// need to copy all points into a single array to be sent to GPU
-	int numPoints = getNumPoints(fileInfos, numFiles);
-	vec2* points = new vec2[numPoints];
-	getAllPoints(fileInfos, numFiles, points);
-
-	// set up bufferIndex
-	unsigned lastIndex = 0;
-	for(unsigned i = 0; i < numFiles; i++) {
-		fileInfos[i].bufferIndex = lastIndex;
-		lastIndex += getNumPoints(fileInfos[i]);
-	}
 
 	// set up toolbar canvases
 	for(unsigned i = 0; i < numFiles + 1; i++) {
@@ -379,7 +429,20 @@ int main(int argc, char **argv) {
 	// init glew
 	glewInit();
 
-	initGPUBuffers(points, numPoints);
+	initGPUBuffers();
+	
+	// set up bufferIndex
+	unsigned lastIndex = 0;
+	for(unsigned i = 0; i < numFiles; i++) {
+		fileInfos[i].bufferIndex = lastIndex;
+		lastIndex += getNumPoints(fileInfos[i]);
+	}
+
+	drawingInfo.name = "drawing";
+	drawingInfo.bufferIndex = lastIndex; // all drawing points at end of buffer
+	
+	bufferAllPoints();
+
 	shaderSetup();
 
 	// assign handlers
