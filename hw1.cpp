@@ -39,6 +39,7 @@ unsigned numFiles;
 mat4 ortho;
 // every canvas in here will be drawn, corrected to preserve aspect ratio
 vector<Canvas> canvases;
+Canvas* mainCanvas; // the main large canvas, added to canvases later
 
 
 void initGPUBuffers(vec2* points, int numPoints) {
@@ -74,7 +75,12 @@ void shaderSetup( void )
 }
 
 // draw the data within the canvas' location, correcting for aspect ratio
+// if the canvas has no data, nothing happens
 void drawCanvas(Canvas* canvas) {
+	if(canvas->data == NULL) {
+		return;
+	}
+
 	// make the drawing scale to fit the viewport
 	ortho = canvas->data->extents.ortho;
 	GLuint projloc = glGetUniformLocation(program, "Proj");
@@ -137,15 +143,23 @@ void display(void) {
 
 //----------------------------------------------------------------------------
 
+void displayRandomFile() {
+	// set mainCanvas data to a random file
+	int randomIndex = rand() % numFiles;
+	mainCanvas->data = &fileInfos[randomIndex];
+}
+
 // keyboard handler
-	void
-keyboard( unsigned char key, int x, int y )
-{
+void keyboard( unsigned char key, int x, int y ) {
 	switch ( key ) {
-		case 033:
+		case 27: // ESC
 			exit( EXIT_SUCCESS );
 			break;
+		case 112: // P
+			displayRandomFile();
+			break;
 	}
+	display(); // doesn't display automatically, need to call this
 }
 
 void reshape(int screenWidth, int screenHeight) {
@@ -159,7 +173,6 @@ void reshape(int screenWidth, int screenHeight) {
 		Canvas* canvas = &*c;
 		Viewport* loc = &canvas->location;
 		int index = c - canvases.begin();
-		
 		if(index < numToolbarItems) { //toolbar canvases
 			// split the toolbar so every item has equal width, same height
 			loc->x = lastBoxEnd;
@@ -167,8 +180,13 @@ void reshape(int screenWidth, int screenHeight) {
 			loc->width = (float)screenWidth / numToolbarItems;
 			loc->height = toolbarHeight;
 			lastBoxEnd += loc->width;
+		} else if(canvas == mainCanvas) { // main canvas right after toolbar items
+			loc->x = loc->y = 0;
+			loc->width = screenWidth;
+			int height = screenHeight - toolbarHeight;
+			loc->height = height < 0 ? 0 : height;
 		} else {
-			// TODO: tiles, main area
+			// TODO: tile
 		}
 	}
 }
@@ -229,6 +247,13 @@ int main(int argc, char **argv) {
 		// location is handled by reshape
 		canvases.push_back(c);
 	}
+	Canvas c;
+	canvases.push_back(c); // push empty canvas
+	mainCanvas = &canvases.back(); // mainCanvas points to the new one
+	mainCanvas->data = NULL; // make sure display function knows there's no data
+
+	srand(time(NULL));
+	displayRandomFile();
 
 	// init glut
 	glutInit(&argc, argv);
