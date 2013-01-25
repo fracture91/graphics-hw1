@@ -31,6 +31,8 @@ struct Canvas {
 	// where this should be painted on the screen
 	// aspect ratio adjustments will likely make the drawing smaller than this
 	Viewport location;
+	// the last viewport where this canvas was painted after adjusting for aspect ratio
+	Viewport adjusted;
 	GRSInfo* data;
 };
 
@@ -47,6 +49,13 @@ GRSInfo drawingInfo; // holds info for the free draw mode
 void bufferPoints(vec2* points, int numPoints) {
 	GLsizeiptr size = sizeof(points[0])*numPoints;
 	glBufferData(GL_ARRAY_BUFFER, size, points, GL_STATIC_DRAW);
+}
+
+// copy all points from given line into points_out
+void copyAllPoints(GRSLine* line, vec2* points_out) {
+	for(unsigned i = 0; i < line->numPoints; i++) {
+		points_out[i] = line->points[i];
+	}
 }
 
 // copy all points from infos into given array
@@ -109,7 +118,11 @@ void shaderSetup( void )
 // draw the data within the canvas' location, correcting for aspect ratio
 // if the canvas has no data, nothing happens
 void drawCanvas(Canvas* canvas) {
+	Viewport loc = canvas->location;
+	Viewport* adjusted = &canvas->adjusted;
+	*adjusted = loc; // adjusted is entire location by default
 	if(canvas->data == NULL) {
+		adjusted->x = adjusted->y = adjusted->width = adjusted->height = 0;
 		return;
 	}
 
@@ -122,26 +135,26 @@ void drawCanvas(Canvas* canvas) {
 
 	GRSInfo* info = canvas->data;
 	GRSExtents ex = info->extents;
-	Viewport loc = canvas->location;
-	Viewport final = loc; // final is entire location by default
 
 	// adjust viewport to maintain aspect ratio within loc bounds
 	float targetRatio = (float)loc.width / (float)loc.height;
 	float sourceRatio = (ex.right - ex.left) / (ex.top - ex.bottom);
 	if(sourceRatio > targetRatio) {
-		final.height = loc.width / sourceRatio;
+		adjusted->height = loc.width / sourceRatio;
 	} else if (sourceRatio < targetRatio) {
-		final.width = loc.height * sourceRatio;
+		adjusted->width = loc.height * sourceRatio;
 	}
 
-	glViewport(final.x, final.y, final.width, final.height);
+	glViewport(adjusted->x, adjusted->y, adjusted->width, adjusted->height);
 
 	// iterate through all lines and draw each one by drawing the
 	// appropriate subset of points on the GPU
 	unsigned lastLineIndex = canvas->data->bufferIndex;
 	for(unsigned i = 0; i < canvas->data->numLines; i++) {
 		unsigned len = canvas->data->lines[i].numPoints;
-		glDrawArrays(GL_LINE_STRIP, lastLineIndex, len);
+		// lines with only one point should render as points
+		GLenum mode = len == 1 ? GL_POINTS : GL_LINE_STRIP;
+		glDrawArrays(mode, lastLineIndex, len);
 		lastLineIndex += len;
 	}
 }
@@ -227,8 +240,8 @@ void clearDrawingInfo() {
 	
 	// draw default points to indicate drawing bounds
 	// (since aspect ratio preservation may make it smaller than canvas)
-	drawingInfo.numLines = 1;
-	drawingInfo.lines = new GRSLine[1];
+	drawingInfo.numLines = 2; // boundary line and empty initial drawing line
+	drawingInfo.lines = new GRSLine[drawingInfo.numLines];
 	drawingInfo.lines[0].numPoints = 5;
 	drawingInfo.lines[0].points = new vec2[5];
 	vec2* points = drawingInfo.lines[0].points;
@@ -237,6 +250,8 @@ void clearDrawingInfo() {
 	points[2] = vec2(ex->right - 1, ex->top - 1);
 	points[3] = vec2(ex->right - 1, ex->bottom + 1);
 	points[4] = points[0];
+	drawingInfo.lines[1].numPoints = 0;
+	drawingInfo.lines[1].points = new vec2[0];
 
 	bufferAllPoints();
 }
@@ -307,8 +322,21 @@ bool coordWithinViewport(int x, int y, Viewport* loc) {
 
 int g_screenHeight = 0;
 
+// add a point to the given line
+void addPoint(GRSLine* line, vec2 point) {
+	vec2* newPoints = new vec2[line->numPoints + 1];
+	copyAllPoints(line, newPoints);
+	delete line->points;
+	newPoints[line->numPoints] = point;
+	line->numPoints++;
+	line->points = newPoints;
+}
+
 void mouse(int button, int state, int x, int y) {
 	y = g_screenHeight - y; // unfuck y coordinate
+	if(state != GLUT_DOWN) { // only care about down state
+		return;
+	}
 
 	// see if user clicked on a toolbar item
 	for(vector<Canvas>::iterator c = canvases.begin(); c != canvases.end(); ++c) {
@@ -323,6 +351,18 @@ void mouse(int button, int state, int x, int y) {
 			}
 		}
 	}
+
+	if(progState == E) {
+		// check if user clicked in viewport
+		if(coordWithinViewport(x, y, &getMainCanvas()->adjusted)) {
+			// TODO: convert screen coords to world coords
+			// by default, world coords are same as screen coords
+			// add point to line
+			addPoint(&drawingInfo.lines[drawingInfo.numLines - 1], vec2(x, y));
+			bufferAllPoints();
+		}
+	}
+
 	display();
 }
 
