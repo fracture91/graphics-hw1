@@ -47,6 +47,12 @@ int numToolbarItems;
 GRSInfo drawingInfo; // holds info for the free draw mode
 vec2* movingPoint = NULL; // points to the selected point for the move function
 
+enum ProgramState {P, T, E, M, D, G};
+ProgramState progState = P;
+
+bool isDrawingState(ProgramState state) {
+	return state == E || state == M || state == D;
+}
 
 void bufferPoints(vec2* points, int numPoints) {
 	GLsizeiptr size = sizeof(points[0])*numPoints;
@@ -172,6 +178,9 @@ void drawCanvas(Canvas* canvas) {
 		unsigned len = canvas->data->lines[i].numPoints;
 		// lines with only one point should render as points
 		GLenum mode = len == 1 ? GL_POINTS : GL_LINE_STRIP;
+		if(progState == G && canvas->data == &drawingInfo) {
+			mode = GL_POINTS;
+		}
 		glDrawArrays(mode, lastLineIndex, len);
 		lastLineIndex += len;
 	}
@@ -274,12 +283,33 @@ void clearDrawingInfo() {
 	bufferAllPoints();
 }
 
-enum ProgramState {P, T, E, M, D};
-ProgramState progState = P;
-
-bool isDrawingState(ProgramState state) {
-	return state == E || state == M || state == D;
+// add a point to the given line
+void addPoint(GRSLine* line, vec2 point) {
+	vec2* newPoints = new vec2[line->numPoints + 1];
+	copyAllPoints(line, newPoints);
+	delete line->points;
+	newPoints[line->numPoints] = point;
+	line->numPoints++;
+	line->points = newPoints;
 }
+
+void iterateGMan(GRSInfo* info, vec2 lastPoint, unsigned iteration, unsigned maxPoints) {
+	if(iteration == maxPoints) {
+		return;
+	}
+	// q.x = M(1 + 2L) - p.y + |p.x - LM|
+	// q.y = p.x
+	vec2 nextPoint(40*(1 + 2*3) - lastPoint.y + abs(lastPoint.x - 40*3), lastPoint.x);
+	addPoint(&info->lines[0], nextPoint);
+	iterateGMan(info, nextPoint, iteration + 1, maxPoints);
+}
+
+// draw the gingerbread man into the given GRSInfo
+void drawGMan(GRSInfo* info) {
+	iterateGMan(info, vec2(115, 121), 0, 10000);
+	bufferAllPoints();
+}
+
 
 void changeState(ProgramState state) {
 	ProgramState origState = progState;
@@ -309,6 +339,9 @@ void changeState(ProgramState state) {
 					getMainCanvas()->data = NULL;
 				}
 				break;
+			case G:
+				clearDrawingInfo();
+				break;
 		}
 	}
 
@@ -328,6 +361,17 @@ void changeState(ProgramState state) {
 		case M:
 		case D:
 			break; //nothing
+		case G:
+			clearDrawingInfo();
+			GRSExtents* ex = &drawingInfo.extents;
+			ex->left = 0;
+			ex->right = 640;
+			ex->bottom = 0;
+			ex->top = 480;
+			ex->ortho = Ortho2D(ex->left, ex->right, ex->bottom, ex->top);
+			drawGMan(&drawingInfo);
+			getMainCanvas()->data = &drawingInfo;
+			break;
 	}
 
 }
@@ -364,6 +408,9 @@ void keyboard(unsigned char key, int x, int y) {
 		case 98:
 			isBPressed = true;
 			break;
+		case 103:
+			changeState(G);
+			break;
 	}
 	display(); // doesn't display automatically, need to call this
 }
@@ -391,15 +438,6 @@ void addLine(GRSInfo* info) {
 	info->lines = newLines;
 }
 
-// add a point to the given line
-void addPoint(GRSLine* line, vec2 point) {
-	vec2* newPoints = new vec2[line->numPoints + 1];
-	copyAllPoints(line, newPoints);
-	delete line->points;
-	newPoints[line->numPoints] = point;
-	line->numPoints++;
-	line->points = newPoints;
-}
 
 float euclideanDistance(float x1, float y1, float x2, float y2) {
 	return sqrt(pow((x1 - x2), 2) + pow((y1 - y2), 2));
