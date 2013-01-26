@@ -9,6 +9,7 @@
 #include "GRSReader.cpp"
 #include <vector>
 #include <time.h>
+#include <math.h>
 
 using std::vector;
 
@@ -44,6 +45,7 @@ mat4 ortho;
 vector<Canvas> canvases;
 int numToolbarItems;
 GRSInfo drawingInfo; // holds info for the free draw mode
+vec2* movingPoint = NULL; // points to the selected point for the move function
 
 
 void bufferPoints(vec2* points, int numPoints) {
@@ -263,11 +265,22 @@ void clearDrawingInfo() {
 	bufferAllPoints();
 }
 
-enum ProgramState {P, T, E};
+enum ProgramState {P, T, E, M, D};
 ProgramState progState = P;
+
+bool isDrawingState(ProgramState state) {
+	return state == E || state == M || state == D;
+}
 
 void changeState(ProgramState state) {
 	ProgramState origState = progState;
+	
+	if(!isDrawingState(origState)) {
+		if(state == M || state == D) {
+			return; // can only reach these states from other drawing states
+		}
+	}
+
 	progState = state;
 
 	// cleanup for states that need it
@@ -279,8 +292,13 @@ void changeState(ProgramState state) {
 			case T:
 				clearRandomTiles();
 				break;
-			case E:
-				getMainCanvas()->data = NULL;
+			case M:
+				movingPoint = NULL;
+			case E: // fallthrough
+			case D:
+				if(!isDrawingState(state)) {
+					getMainCanvas()->data = NULL;
+				}
 				break;
 		}
 	}
@@ -293,9 +311,14 @@ void changeState(ProgramState state) {
 			displayRandomTiles();
 			break;
 		case E:
-			clearDrawingInfo();
-			getMainCanvas()->data = &drawingInfo;
+			if(!isDrawingState(origState)) {
+				clearDrawingInfo();
+				getMainCanvas()->data = &drawingInfo;
+			}
 			break;
+		case M:
+		case D:
+			break; //nothing
 	}
 
 }
@@ -322,6 +345,12 @@ void keyboard(unsigned char key, int x, int y) {
 			break;
 		case 101: // E
 			changeState(E);
+			break;
+		case 109:
+			changeState(M);
+			break;
+		case 100:
+			changeState(D);
 			break;
 		case 98:
 			isBPressed = true;
@@ -363,37 +392,68 @@ void addPoint(GRSLine* line, vec2 point) {
 	line->points = newPoints;
 }
 
+float euclideanDistance(float x1, float y1, float x2, float y2) {
+	return sqrt(pow((x1 - x2), 2) + pow((y1 - y2), 2));
+}
+
+// find a point in the given info that's close to the given coords
+// can be null
+vec2* findClosePoint(GRSInfo* info, int x, int y) {
+	for(unsigned i = 0; i < info->numLines; i++) {
+		GRSLine line = info->lines[i];
+		for(unsigned j = 0; j < line.numPoints; j++) {
+			vec2* point = &line.points[j];
+			// TODO: return closest, not just anyone that's near
+			if(euclideanDistance(point->x, point->y, x, y) < 5) {
+				return point;
+			}
+		}
+	}
+	return NULL;
+}
+
 void mouse(int button, int state, int x, int y) {
 	y = g_screenHeight - y; // unfuck y coordinate
-	if(state != GLUT_DOWN) { // only care about down state
-		return;
-	}
 
-	// see if user clicked on a toolbar item
-	for(vector<Canvas>::iterator c = canvases.begin(); c != canvases.end(); ++c) {
-		Canvas* canvas = &*c;
-		Viewport* loc = &canvas->location;
-		int index = c - canvases.begin();
-		if(index < numToolbarItems) {
-			if(coordWithinViewport(x, y, loc)) {
-				changeState(P);
-				getMainCanvas()->data = canvas->data;
-				break;
+	if(state == GLUT_DOWN) {
+		// see if user clicked on a toolbar item
+		for(vector<Canvas>::iterator c = canvases.begin(); c != canvases.end(); ++c) {
+			Canvas* canvas = &*c;
+			Viewport* loc = &canvas->location;
+			int index = c - canvases.begin();
+			if(index < numToolbarItems) {
+				if(coordWithinViewport(x, y, loc)) {
+					changeState(P);
+					getMainCanvas()->data = canvas->data;
+					break;
+				}
 			}
 		}
 	}
 
-	if(progState == E) {
-		// check if user clicked in viewport
-		if(coordWithinViewport(x, y, &getMainCanvas()->adjusted)) {
+	// check if user clicked in viewport
+	// TODO: convert screen coords to world coords
+	if(coordWithinViewport(x, y, &getMainCanvas()->adjusted)) {
+		if(progState == E && state == GLUT_DOWN) {
 			if(isBPressed) {
 				// start a new line
 				addLine(&drawingInfo);
 			}
 			// add point to line
-			// TODO: convert screen coords to world coords
 			// by default, world coords are same as screen coords
 			addPoint(&drawingInfo.lines[drawingInfo.numLines - 1], vec2(x, y));
+		} else if(progState == M) {
+			if(state == GLUT_DOWN) {
+				// store point for later
+				movingPoint = findClosePoint(&drawingInfo, x, y);
+			} else if(state == GLUT_UP && movingPoint != NULL) {
+				// actually move point
+				movingPoint->x = x;
+				movingPoint->y = y;
+				movingPoint = NULL;
+			}
+		}
+		if(isDrawingState(progState)) {
 			bufferAllPoints();
 		}
 	}
