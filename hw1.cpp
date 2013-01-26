@@ -466,8 +466,10 @@ void mouse(int button, int state, int x, int y) {
 	}
 
 	// check if user clicked in viewport
-	// TODO: convert screen coords to world coords
 	if(coordWithinViewport(x, y, &getMainCanvas()->adjusted)) {
+		float sizeFactor = getMainCanvas()->data->extents.right 
+			/ getMainCanvas()->adjusted.width;
+		float worldX = x * sizeFactor, worldY = y * sizeFactor;
 		if(progState == E && state == GLUT_DOWN) {
 			if(isBPressed) {
 				// start a new line
@@ -475,20 +477,20 @@ void mouse(int button, int state, int x, int y) {
 			}
 			// add point to line
 			// by default, world coords are same as screen coords
-			addPoint(&drawingInfo.lines[drawingInfo.numLines - 1], vec2(x, y));
+			addPoint(&drawingInfo.lines[drawingInfo.numLines - 1], vec2(worldX, worldY));
 		} else if(progState == M) {
 			if(state == GLUT_DOWN) {
 				// store point for later
-				movingPoint = findClosePoint(&drawingInfo, x, y);
+				movingPoint = findClosePoint(&drawingInfo, worldX, worldY);
 			} else if(state == GLUT_UP && movingPoint != NULL) {
 				// actually move point
-				movingPoint->x = x;
-				movingPoint->y = y;
+				movingPoint->x = worldX;
+				movingPoint->y = worldY;
 				movingPoint = NULL;
 			}
 		} else if(progState == D) {
 			if(state == GLUT_DOWN) {
-				vec2* point = findClosePoint(&drawingInfo, x, y);
+				vec2* point = findClosePoint(&drawingInfo, worldX, worldY);
 				if(point != NULL) {
 					deletePoint(&drawingInfo, point);
 				}
