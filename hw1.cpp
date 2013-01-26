@@ -61,10 +61,19 @@ void copyAllLines(GRSInfo* info, GRSLine* lines_out) {
 }
 
 // copy all points from given line into points_out
-void copyAllPoints(GRSLine* line, vec2* points_out) {
-	for(unsigned i = 0; i < line->numPoints; i++) {
-		points_out[i] = line->points[i];
+// except for the one at the given index
+void copyAllPoints(GRSLine* line, vec2* points_out, unsigned except) {
+	for(unsigned i = 0, dest = 0; i < line->numPoints; i++, dest++) {
+		if(i == except) {
+			dest--;
+			continue;
+		}
+		points_out[dest] = line->points[i];
 	}
+}
+
+void copyAllPoints(GRSLine* line, vec2* points_out) {
+	copyAllPoints(line, points_out, -1);
 }
 
 // copy all points from infos into given array
@@ -412,6 +421,31 @@ vec2* findClosePoint(GRSInfo* info, int x, int y) {
 	return NULL;
 }
 
+void deletePoint(GRSInfo* info, vec2* point) {
+	GRSLine* line;
+	int pointIndex = -1;
+	// find the given point in info
+	for(unsigned i = 0; i < info->numLines; i++) {
+		line = &info->lines[i];
+		for(unsigned j = 0; j < line->numPoints; j++) {
+			if(&line->points[j] == point) {
+				pointIndex = j;
+				goto doneloop; // c++ can't break from a labeled loop :(
+			}
+		}
+	}
+
+doneloop: if(pointIndex == -1) {
+		throw "Point to delete not found";
+	}
+	// make a new points array, copy all elements except target point, swap
+	vec2* newPoints = new vec2[line->numPoints - 1];
+	copyAllPoints(line, newPoints, pointIndex);
+	delete line->points;
+	line->numPoints--;
+	line->points = newPoints;
+}
+
 void mouse(int button, int state, int x, int y) {
 	y = g_screenHeight - y; // unfuck y coordinate
 
@@ -451,6 +485,13 @@ void mouse(int button, int state, int x, int y) {
 				movingPoint->x = x;
 				movingPoint->y = y;
 				movingPoint = NULL;
+			}
+		} else if(progState == D) {
+			if(state == GLUT_DOWN) {
+				vec2* point = findClosePoint(&drawingInfo, x, y);
+				if(point != NULL) {
+					deletePoint(&drawingInfo, point);
+				}
 			}
 		}
 		if(isDrawingState(progState)) {
